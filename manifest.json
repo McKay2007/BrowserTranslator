@@ -1,0 +1,48 @@
+{
+  "manifest_version": 3,
+  "name": "ReadMate 划词翻译",
+  "version": "1.5.0",
+  "description": "阅读外文时选中或双击即可快速翻译，支持有道、Google、MyMemory 及自定义大模型接口；单词提供音标、分词性释义与例句。",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "ReadMate 设置",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "permissions": ["storage", "contextMenus"],
+  "host_permissions": [
+    "http://*/*",
+    "https://*/*",
+    "https://fanyi.youdao.com/*",
+    "https://dict.youdao.com/*",
+    "https://translate.googleapis.com/*",
+    "https://api.mymemory.translated.net/*"
+  ],
+  "commands": {
+    "translate-selection": {
+      "suggested_key": {
+        "default": "Alt+T"
+      },
+      "description": "翻译当前选中的文本"
+    }
+  }
+}
