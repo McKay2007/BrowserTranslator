@@ -279,3 +279,19 @@ footer {
   color: var(--muted);
   font-size: 12px;
 }
+
+.pdf-link {
+  width: 100%;
+  border: 0;
+  border-radius: 6px;
+  background: var(--accent);
+  color: #fff;
+  padding: 8px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  margin-bottom: 12px;
+}
+
+.pdf-link:hover {
+  background: var(--accent-dark);
+}

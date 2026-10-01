@@ -79,6 +79,7 @@ const sandbox = {
       }
     },
     runtime: {
+      id: 'test-extension-id',
       onMessage: { addListener: () => {} },
       sendMessage: (msg, cb) => cb({ translated: '你好', engine: '测试', isWord: true }),
       lastError: null

@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>ReadMate PDF regression test</title>
+  <link rel="stylesheet" href="../viewer.css">
+  <style>#testResults { padding: 12px; background: white; white-space: pre-wrap; } #testResults[data-failed="true"] { color: #b91c1c; }</style>
+</head>
+<body>
+  <header class="toolbar"><span class="brand">PDF regression test</span><button id="openBtn">打开 PDF</button><input id="fileInput" type="file" hidden><label class="word-completion"><input id="completeWords" type="checkbox" checked>补齐词尾</label><span id="status"></span></header>
+  <pre id="testResults">Running…</pre>
+  <main id="viewer"></main>
+  <script src="pdf-fixture.js"></script>
+  <script src="pdf-browser.js"></script>
+  <script src="pdf-alignment.js"></script>
+  <script src="../pdf-selection.js"></script>
+  <script src="../content.js"></script>
+  <script type="module" src="../viewer.js"></script>
+</body>
+</html>

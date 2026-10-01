@@ -41,6 +41,8 @@ const STYLE = `
   font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
   font-size: 14px;
   overflow: hidden;
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
 }
 .rm-bubble[hidden], .rm-btn[hidden] { display: none; }
 .rm-head {
@@ -121,6 +123,7 @@ const STYLE = `
 .rm-forms { color: #64748b; margin-top: 8px; font-size: 12px; }
 .rm-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
   padding: 0 12px 12px;
 }
@@ -136,6 +139,17 @@ const STYLE = `
 .rm-actions button:hover { background: #f1f5f9; }
 .rm-save { color: #b45309; }
 .rm-save.saved { color: #1d4ed8; border-color: #dbeafe; background: #eff6ff; }
+.rm-compact .rm-src { padding: 8px 10px 4px; font-size: 12px; }
+.rm-compact .rm-trans { padding: 4px 10px 8px; font-size: 15px; }
+.rm-compact .rm-dict { margin: 0 10px 8px; padding: 8px; }
+.rm-compact .rm-dict-line {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
+.rm-compact .rm-actions { padding: 0 10px 10px; gap: 4px; }
+.rm-compact .rm-actions button { padding: 4px 8px; font-size: 11px; }
 .rm-spin {
   display: inline-block;
   width: 16px;
@@ -206,6 +220,7 @@ let lastText = '';
 let currentWord = '';
 let currentRange = null;
 let lastDictionary = null;
+let translationId = 0;
 
 function escapeHtml(value) {
   return String(value)
@@ -221,8 +236,20 @@ function truncate(text, max) {
   return s.length > max ? s.slice(0, max) + '…' : s;
 }
 
+function chromeAvailable() {
+  try {
+    return !!(chrome && chrome.runtime && chrome.runtime.id);
+  } catch (err) {
+    return false;
+  }
+}
+
 function getSettings() {
   return new Promise((resolve) => {
+    if (!chromeAvailable()) {
+      resolve({ engine: 'auto', targetLang: 'zh-CN', autoLookup: true });
+      return;
+    }
     chrome.storage.sync.get(
       { engine: 'auto', targetLang: 'zh-CN', autoLookup: true },
       resolve
@@ -244,7 +271,7 @@ function showButton(rect) {
 
 function handleSelection() {
   const selection = window.getSelection();
-  const text = selection ? selection.toString().trim() : '';
+  const text = selectedText(selection);
   if (!text || text.length > MAX_LEN) {
     currentText = '';
     currentRect = null;
@@ -254,6 +281,8 @@ function handleSelection() {
   const range = selection.getRangeAt(0);
   const rect = range.getBoundingClientRect();
   if (!rect || (rect.width === 0 && rect.height === 0)) {
+    currentText = '';
+    currentRect = currentRange = null;
     hideButton();
     return;
   }
@@ -261,18 +290,25 @@ function handleSelection() {
   const vh = window.innerHeight;
   const inViewport = rect.bottom > 0 && rect.top < vh && rect.right > 0 && rect.left < vw;
   if (!inViewport) {
+    currentText = '';
+    currentRect = currentRange = null;
     hideButton();
     return;
   }
   currentText = text;
   currentRect = rect;
-  currentRange = range;
+  currentRange = range.cloneRange ? range.cloneRange() : range;
   showButton(rect);
 }
 
 function scheduleSelection() {
   clearTimeout(selectionTimer);
   selectionTimer = setTimeout(handleSelection, 120);
+}
+
+function selectedText(selection) {
+  if (window.ReadMatePdfText) return window.ReadMatePdfText.readSelection(selection);
+  return selection ? selection.toString().trim() : '';
 }
 
 function setLoading(text) {
@@ -288,13 +324,17 @@ function setLoading(text) {
   saveBtn.setAttribute('hidden', '');
   lastResult = null;
   lastText = text;
-  bubble.style.width = Math.min(BUBBLE_WIDTH, window.innerWidth - 16) + 'px';
   positionBubble();
 }
 
 function positionBubble(rect) {
   const r = rect || getLiveRect();
-  const width = Math.min(BUBBLE_WIDTH, window.innerWidth - 16);
+  const text = lastText || currentText;
+  const compact = !!window.ReadMatePdfText && /^[^\s]{1,64}$/.test(text);
+  const preferredWidth = compact ? 280 : (window.ReadMatePdfText ? 360 : BUBBLE_WIDTH);
+  if (compact) bubble.classList.add('rm-compact');
+  else bubble.classList.remove('rm-compact');
+  const width = Math.min(preferredWidth, window.innerWidth - 16);
   bubble.style.width = width + 'px';
   const bw = bubble.offsetWidth;
   const bh = bubble.offsetHeight;
@@ -487,6 +527,7 @@ function handleDictionaryResult(word, dictionary) {
 }
 
 function enrichSavedWord(word, dictionary) {
+  if (!chromeAvailable()) return;
   chrome.storage.local.get({ vocabulary: [] }, (data) => {
     const list = data.vocabulary || [];
     const item = list.find((v) => v.word === word);
@@ -502,28 +543,26 @@ function enrichSavedWord(word, dictionary) {
 
 function updateSaveButton() {
   const word = currentWord;
-  if (!word) return;
+  if (!word || !chromeAvailable()) return;
   chrome.storage.local.get({ vocabulary: [] }, (data) => {
     if (word !== currentWord) return;
     const list = data.vocabulary || [];
-    savedWord = word;
-    savedState = list.some((item) => item.word === word);
-    saveBtn.textContent = savedState ? '★ 已收藏' : '☆ 收藏';
-    if (savedState) saveBtn.classList.add('saved');
+    const isSaved = list.some((item) => item.word === word);
+    saveBtn.textContent = isSaved ? '★ 已收藏' : '☆ 收藏';
+    if (isSaved) saveBtn.classList.add('saved');
     else saveBtn.classList.remove('saved');
   });
 }
 
 function toggleSave() {
   const word = currentWord;
-  if (!word) return;
+  if (!word || !chromeAvailable()) return;
   chrome.storage.local.get({ vocabulary: [] }, (data) => {
     if (word !== currentWord) return;
     const list = data.vocabulary || [];
     const idx = list.findIndex((item) => item.word === word);
     if (idx >= 0) {
       list.splice(idx, 1);
-      savedState = false;
       saveBtn.textContent = '☆ 收藏';
       saveBtn.classList.remove('saved');
     } else {
@@ -537,7 +576,6 @@ function toggleSave() {
         detail: lastDictionary || null,
         addedAt: Date.now()
       });
-      savedState = true;
       saveBtn.textContent = '★ 已收藏';
       saveBtn.classList.add('saved');
     }
@@ -547,11 +585,17 @@ function toggleSave() {
 
 function startTranslate(text, rect) {
   if (!text) return;
+  const requestId = ++translationId;
   anchorRect = rect || currentRect;
   currentText = text;
   hideButton();
   setLoading(text);
+  if (!chromeAvailable()) {
+    showError('插件已重新加载，请刷新本页后重试');
+    return;
+  }
   chrome.runtime.sendMessage({ type: 'TRANSLATE', text }, (response) => {
+    if (requestId !== translationId) return;
     if (chrome.runtime.lastError) {
       showError(chrome.runtime.lastError.message || '插件通信失败');
       return;
@@ -567,11 +611,13 @@ function startTranslate(text, rect) {
 }
 
 function hideBubble() {
+  translationId++;
+  currentWord = '';
   bubble.setAttribute('hidden', '');
   hideButton();
 }
 
-btn.addEventListener('pointerdown', (e) => e.stopPropagation());
+btn.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); });
 btn.addEventListener('click', () => {
   startTranslate(currentText, currentRect);
 });
@@ -582,7 +628,7 @@ closeBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
 closeBtn.addEventListener('click', hideBubble);
 
 retryBtn.addEventListener('click', () => {
-  startTranslate(currentText, anchorRect);
+  startTranslate(lastText || currentText, anchorRect);
 });
 
 copyBtn.addEventListener('click', async () => {
@@ -721,7 +767,7 @@ document.addEventListener('dblclick', async () => {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message && message.type === 'TRANSLATE_SELECTION') {
     handleSelection();
-    const text = message.text || currentText;
+    const text = window.ReadMatePdfText ? currentText : (message.text || currentText);
     if (text) startTranslate(text, currentRect);
     sendResponse({ ok: true });
     return false;
@@ -733,3 +779,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
   return false;
 });
+
+if (window.ReadMatePdfText) {
+  document.addEventListener('keydown', (event) => {
+    if (event.altKey && !event.ctrlKey && !event.metaKey && event.code === 'KeyT') {
+      event.preventDefault();
+      handleSelection();
+      if (currentText) startTranslate(currentText, currentRect);
+    }
+  });
+  document.addEventListener('readmate-pdf-reset', () => {
+    hideBubble();
+    currentText = lastText = '';
+    currentRange = currentRect = anchorRect = null;
+  });
+}

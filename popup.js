@@ -25,6 +25,7 @@ const vocabSearch = document.getElementById('vocabSearch');
 const vocabClear = document.getElementById('vocabClear');
 const vocabList = document.getElementById('vocabList');
 const vocabEmpty = document.getElementById('vocabEmpty');
+const openPdf = document.getElementById('openPdf');
 
 let settings = { ...DEFAULTS };
 
@@ -67,6 +68,10 @@ engine.addEventListener('change', () => {
 targetLang.addEventListener('change', () => chrome.storage.sync.set({ targetLang: targetLang.value }));
 autoLookup.addEventListener('change', () => chrome.storage.sync.set({ autoLookup: autoLookup.checked }));
 saveBtn.addEventListener('click', save);
+
+openPdf.addEventListener('click', () => {
+  chrome.tabs.create({ url: chrome.runtime.getURL('viewer.html') });
+});
 
 chrome.storage.sync.get(DEFAULTS, (stored) => {
   settings = { ...DEFAULTS, ...stored };

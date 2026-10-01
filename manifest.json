@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "ReadMate 划词翻译",
+  "name": "ReadMate PDF 划词翻译",
   "version": "1.5.0",
-  "description": "阅读外文时选中或双击即可快速翻译，支持有道、Google、MyMemory 及自定义大模型接口；单词提供音标、分词性释义与例句。",
+  "description": "阅读外文网页或 PDF 时选中即可快速翻译，支持有道、Google、MyMemory 及自定义大模型接口；单词提供音标、分词性释义与例句。",
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
@@ -10,7 +10,7 @@
   },
   "action": {
     "default_popup": "popup.html",
-    "default_title": "ReadMate 设置",
+    "default_title": "ReadMate PDF 设置",
     "default_icon": {
       "16": "icons/icon16.png",
       "48": "icons/icon48.png",
@@ -19,6 +19,9 @@
   },
   "background": {
     "service_worker": "background.js"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
   },
   "content_scripts": [
     {

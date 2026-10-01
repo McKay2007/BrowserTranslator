@@ -7,6 +7,22 @@ const DEFAULTS = {
   customModel: 'deepseek-chat'
 };
 
+function safeSendResponse(sendResponse, data) {
+  try {
+    sendResponse(data);
+  } catch (err) {
+    // The extension was reloaded while a request was in flight.
+  }
+}
+
+function sendToTab(tabId, message) {
+  try {
+    chrome.tabs.sendMessage(tabId, message).catch(() => {});
+  } catch (err) {
+    // The tab is gone or the extension context was invalidated.
+  }
+}
+
 function getSettings() {
   return new Promise((resolve) => {
     chrome.storage.sync.get(DEFAULTS, resolve);
@@ -419,7 +435,7 @@ chrome.runtime.onInstalled.addListener(() => {
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
   if (info.menuItemId === 'readmate-translate-selection' && tab && tab.id != null) {
-    chrome.tabs.sendMessage(tab.id, { type: 'TRANSLATE_SELECTION', text: info.selectionText }).catch(() => {});
+    sendToTab(tab.id, { type: 'TRANSLATE_SELECTION', text: info.selectionText });
   }
 });
 
@@ -439,23 +455,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message && message.type === 'TRANSLATE') {
     handleTranslate(message.text)
       .then((result) => {
-        sendResponse(result);
+        safeSendResponse(sendResponse, result);
         if (result.isWord && sender && sender.tab && sender.tab.id != null) {
           const word = String(message.text || '').trim();
           fetchWordDetail(word)
-            .then((dictionary) => {
-              chrome.tabs
-                .sendMessage(sender.tab.id, { type: 'DICTIONARY_RESULT', word, dictionary })
-                .catch(() => {});
-            })
-            .catch(() => {
-              chrome.tabs
-                .sendMessage(sender.tab.id, { type: 'DICTIONARY_RESULT', word, dictionary: null })
-                .catch(() => {});
-            });
+            .then((dictionary) => sendToTab(sender.tab.id, { type: 'DICTIONARY_RESULT', word, dictionary }))
+            .catch(() => sendToTab(sender.tab.id, { type: 'DICTIONARY_RESULT', word, dictionary: null }));
         }
       })
-      .catch((err) => sendResponse({ error: err && err.message ? err.message : '翻译失败' }));
+      .catch((err) => safeSendResponse(sendResponse, { error: err && err.message ? err.message : '翻译失败' }));
     return true;
   }
   return false;
