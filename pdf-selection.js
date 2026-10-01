@@ -6,6 +6,10 @@
     document.addEventListener('pointerdown', () => { draggingSelection = true; });
     document.addEventListener('pointerup', () => { draggingSelection = false; });
     document.addEventListener('pointercancel', () => { draggingSelection = false; });
+    document.addEventListener('dblclick', event => {
+      const glyph = event.target.closest?.('.rm-glyph');
+      if (glyph) selectWordAt(glyph);
+    });
     window.addEventListener('blur', () => { draggingSelection = false; });
   }
 
@@ -74,9 +78,9 @@
 
   function completeRangeEnd(range, spans) {
     if (range.collapsed || range.endContainer.nodeType !== 3) return range;
-    const endSpan = range.endContainer.parentElement;
+    const endSpan = range.endContainer.parentElement.closest('[data-rm-pdf-text]');
     const index = spans.indexOf(endSpan);
-    if (index < 0 || endSpan.firstChild !== range.endContainer) return range;
+    if (index < 0) return range;
     // A PDF word can be split across multiple text runs (font changes or kerning).
     let first = index, last = index;
     const connected = (a, b) => {
@@ -88,8 +92,8 @@
     const run = spans.slice(first, last + 1);
     let text = '', start = 0, end = 0;
     for (const span of run) {
-      if (span.firstChild === range.startContainer) start = text.length + range.startOffset;
-      if (span === endSpan) end = text.length + range.endOffset;
+      if (span.contains(range.startContainer)) start = text.length + offsetWithin(span, range.startContainer, range.startOffset);
+      if (span === endSpan) end = text.length + offsetWithin(span, range.endContainer, range.endOffset);
       text += span.textContent;
     }
     const completed = completionEnd(text, start, end);
@@ -98,12 +102,67 @@
     let offset = completed;
     for (const span of run) {
       if (offset <= span.textContent.length && span.firstChild) {
-        corrected.setEnd(span.firstChild, offset);
+        const endPoint = textPoint(span, offset);
+        corrected.setEnd(endPoint.node, endPoint.offset);
         return corrected;
       }
       offset -= span.textContent.length;
     }
     return range;
+  }
+
+  function offsetWithin(span, node, offset) {
+    const prefix = document.createRange();
+    prefix.selectNodeContents(span);
+    prefix.setEnd(node, offset);
+    return prefix.toString().length;
+  }
+
+  function textPoint(element, offset) {
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+    let node, last = null;
+    while ((node = walker.nextNode())) {
+      last = node;
+      if (offset <= node.length) return { node, offset };
+      offset -= node.length;
+    }
+    return { node: last || element, offset: last ? last.length : 0 };
+  }
+
+  function selectWordAt(glyph) {
+    const span = glyph.closest('[data-rm-pdf-text]');
+    const viewer = document.getElementById('viewer');
+    if (!span || !viewer?.contains(span)) return false;
+    const spans = [...viewer.querySelectorAll('[data-rm-pdf-text]')];
+    const index = spans.indexOf(span);
+    let first = index, last = index;
+    const connected = (a, b) => {
+      const left = metadata.get(a), right = metadata.get(b);
+      return left && right && separator(left, right) === '';
+    };
+    while (first > 0 && connected(spans[first - 1], spans[first])) first--;
+    while (last + 1 < spans.length && connected(spans[last], spans[last + 1])) last++;
+    const run = spans.slice(first, last + 1);
+    const text = run.map(element => element.textContent).join('');
+    const offset = spans.slice(first, index).reduce((sum, element) => sum + element.textContent.length, 0) +
+      offsetWithin(span, glyph, 0) + Math.floor(glyph.textContent.length / 2);
+    const words = typeof Intl.Segmenter === 'function'
+      ? [...new Intl.Segmenter(undefined, { granularity: 'word' }).segment(text)].filter(part => part.isWordLike)
+      : [...text.matchAll(/[\p{L}\p{M}\p{N}_]+(?:['’][\p{L}\p{M}\p{N}_]+)*/gu)]
+        .map(match => ({ segment: match[0], index: match.index }));
+    const word = words.find(part => offset >= part.index && offset < part.index + part.segment.length);
+    if (!word) return false;
+    function pointAt(position) {
+      for (const element of run) {
+        if (position <= element.textContent.length) return textPoint(element, position);
+        position -= element.textContent.length;
+      }
+    }
+    const start = pointAt(word.index), end = pointAt(word.index + word.segment.length);
+    const range = document.createRange();
+    range.setStart(start.node, start.offset); range.setEnd(end.node, end.offset);
+    const selection = getSelection(); selection.removeAllRanges(); selection.addRange(range);
+    return true;
   }
 
   function readSelection(selection) {
@@ -154,5 +213,5 @@
     return normalize(text);
   }
 
-  window.ReadMatePdfText = { normalize, attachLayer, readSelection, completionEnd };
+  window.ReadMatePdfText = { normalize, attachLayer, readSelection, completionEnd, textPoint, selectWordAt };
 })();

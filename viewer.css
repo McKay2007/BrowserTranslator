@@ -110,6 +110,11 @@ body {
   transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv));
 }
 .textLayer .markedContent { display: contents; }
+.textLayer span.rm-glyph {
+  font-size: inherit;
+  top: 0;
+  transform: scaleX(var(--rm-glyph-scale-x, 1));
+}
 .textLayer ::selection { background: rgba(37, 99, 235, 0.28); color: transparent; }
 .textLayer br::selection { background: transparent; }
 .textLayer[data-main-rotation="90"] { transform: rotate(90deg) translateY(-100%); }

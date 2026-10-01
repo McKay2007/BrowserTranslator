@@ -19,6 +19,18 @@ Object.assign(window.chrome ||= {}, {
     sendMessage: (message, callback) => { messages.push(message); callbacks.push(callback); }
   }
 });
+// Real browser input (rather than synthetic dblclick) can be checked manually.
+document.addEventListener('dblclick', event => {
+  setTimeout(() => {
+    let output = document.getElementById('doubleClickResult');
+    if (!output) {
+      output = document.createElement('output');
+      output.id = 'doubleClickResult';
+      document.querySelector('.toolbar').appendChild(output);
+    }
+    output.textContent = JSON.stringify({ trusted: event.isTrusted, selected: getSelection().toString(), requested: messages.at(-1)?.text });
+  }, 180);
+});
 window.addEventListener('load', async () => {
   if (new URLSearchParams(location.search).has('alignment')) return;
   const results = document.getElementById('testResults');
@@ -36,8 +48,9 @@ window.addEventListener('load', async () => {
   function select(first, start, last = first, end = last.textContent.length) {
     first.scrollIntoView({ block: 'center' });
     const range = document.createRange();
-    range.setStart(first.firstChild, start);
-    range.setEnd(last.firstChild, end);
+    const startPoint = ReadMatePdfText.textPoint(first, start), endPoint = ReadMatePdfText.textPoint(last, end);
+    range.setStart(startPoint.node, startPoint.offset);
+    range.setEnd(endPoint.node, endPoint.offset);
     const selection = getSelection();
     selection.removeAllRanges();
     selection.addRange(range);
@@ -65,7 +78,7 @@ window.addEventListener('load', async () => {
     check('partial word, no extra characters', ReadMatePdfText.readSelection(selection) === 'Hello');
     const selectedRect = selection.getRangeAt(0).getBoundingClientRect();
     const pointRange = document.caretRangeFromPoint(selectedRect.left + selectedRect.width / 2, selectedRect.top + selectedRect.height / 2);
-    check('hit testing lands on selected word', pointRange?.startContainer === hello.firstChild && pointRange.startOffset <= 5);
+    check('hit testing lands on selected word', hello.contains(pointRange?.startContainer));
     shortcut();
     check('Alt+T sends exact selected text', messages.at(-1).text === 'Hello');
     const staleCallback = callbacks.at(-1);
@@ -88,9 +101,10 @@ window.addEventListener('load', async () => {
     check('translation request uses the completed word', messages.at(-1).text === 'translation');
     selection = select(translation, 0, translation, 10);
     check('one missing final letter is completed', ReadMatePdfText.readSelection(selection) === 'translation');
-    selection.setBaseAndExtent(translation.firstChild, 9, translation.firstChild, 0);
+    const backwardsEnd = ReadMatePdfText.textPoint(translation, 9), backwardsStart = ReadMatePdfText.textPoint(translation, 0);
+    selection.setBaseAndExtent(backwardsEnd.node, backwardsEnd.offset, backwardsStart.node, backwardsStart.offset);
     check('backwards drag completes the trailing edge', ReadMatePdfText.readSelection(selection) === 'translation' &&
-      selection.anchorOffset === 11 && selection.focusOffset === 0);
+      selection.anchorNode === ReadMatePdfText.textPoint(translation, 11).node && selection.focusOffset === 0);
     completeWords.checked = false;
     selection = select(translation, 0, translation, 9);
     check('completion can be disabled for exact fragments', ReadMatePdfText.readSelection(selection) === 'translati' && selection.toString() === 'translati');
@@ -130,6 +144,11 @@ window.addEventListener('load', async () => {
     const outside = document.createRange(); outside.selectNodeContents(results);
     selection.removeAllRanges(); selection.addRange(outside);
     check('toolbar and other UI text excluded', ReadMatePdfText.readSelection(selection) === '');
+    completeWords.checked = false;
+    check('double-click word selection works without suffix completion',
+      ReadMatePdfText.selectWordAt(hello.querySelectorAll('.rm-glyph')[1]) && selection.toString() === 'Hello');
+    check('double-click word selection crosses font changes',
+      ReadMatePdfText.selectWordAt(splitPrefix.querySelector('.rm-glyph')) && selection.toString() === 'translation');
     select(hello, 0, hello, 5); shortcut();
     const closedCallback = callbacks.at(-1);
     hideBubble();

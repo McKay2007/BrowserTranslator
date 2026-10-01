@@ -24,8 +24,9 @@ window.addEventListener('load', async () => {
         if (!span.firstChild) continue;
         for (let index = span.textContent.indexOf(word.text); index >= 0; index = span.textContent.indexOf(word.text, index + 1)) {
         const range = document.createRange();
-        range.setStart(span.firstChild, index);
-        range.setEnd(span.firstChild, index + word.text.length);
+        const start = ReadMatePdfText.textPoint(span, index), end = ReadMatePdfText.textPoint(span, index + word.text.length);
+        range.setStart(start.node, start.offset);
+        range.setEnd(end.node, end.offset);
         const rect = range.getBoundingClientRect(), pageRect = page.getBoundingClientRect();
         const left = (rect.left - pageRect.left) / scale;
         const right = (rect.right - pageRect.left) / scale;
@@ -40,7 +41,30 @@ window.addEventListener('load', async () => {
       }
       if (best) report.push(best.entry);
     }
+    const hitTests = [];
+    const toolbar = document.querySelector('.toolbar');
+    for (const word of geometry.words.filter(w => /^[A-Za-z][A-Za-z-]{3,}$/.test(w.text) && w.top > 155 && w.top < 440).slice(0, 100)) {
+      const pageRect = page.getBoundingClientRect();
+      const y = pageRect.top + (word.top + word.bottom) / 2 * scale;
+      if (y < toolbar.getBoundingClientRect().bottom + 4 || y >= innerHeight - 4) continue;
+      const first = document.caretRangeFromPoint(pageRect.left + (word.x0 + 0.12) * scale, y);
+      const last = document.caretRangeFromPoint(pageRect.left + (word.x1 - 0.12) * scale, y);
+      if (!first || !last || !page.contains(first.startContainer) || !page.contains(last.startContainer)) {
+        hitTests.push({ expected: word.text, actual: '(no text hit)' }); continue;
+      }
+      const range = document.createRange();
+      range.setStart(first.startContainer, first.startOffset);
+      range.setEnd(last.startContainer, last.startOffset);
+      const selection = getSelection(); selection.removeAllRanges(); selection.addRange(range);
+      const actual = ReadMatePdfText.readSelection(selection);
+      hitTests.push({ expected: word.text, actual });
+    }
+    const ordinaryWords = report.filter(w => /[A-Za-z]{2}/.test(w.word));
     results.textContent = JSON.stringify({ matchedWords: report.length,
+      maxOrdinaryWordError: Math.max(...ordinaryWords.flatMap(w => [Math.abs(w.leftError), Math.abs(w.rightError)])),
+      refinedRuns: page.querySelectorAll('[data-rm-pdf-text]:has(.rm-glyph)').length,
+      hitTests: { passed: hitTests.filter(t => t.actual === t.expected).length, total: hitTests.length,
+        failed: hitTests.filter(t => t.actual !== t.expected) },
       worst: report.toSorted((a, b) => Math.max(Math.abs(b.leftError), Math.abs(b.rightError)) - Math.max(Math.abs(a.leftError), Math.abs(a.rightError))).slice(0, 25),
       title: report.slice(0, 10), runs: spans.slice(0, 22).map(span => ({ text: span.textContent, font: span.style.fontFamily, scaleX: span.style.getPropertyValue('--scale-x') }))
     }, null, 2);

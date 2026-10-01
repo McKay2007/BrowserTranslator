@@ -1,4 +1,5 @@
 import * as pdfjsLib from './lib/pdf.min.mjs';
+import { refineTextLayer } from './pdf-text-geometry.js';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = chrome.runtime.getURL('lib/pdf.worker.min.mjs');
 const viewer = document.getElementById('viewer');
@@ -86,6 +87,13 @@ async function openPdf(file) {
       // Match the bundled PDF.js font metrics, glyph widths and rotation.
       textTask = new pdfjsLib.TextLayer({ textContentSource: textContent, container: textLayerEl, viewport });
       await textTask.render();
+      if (id !== loadId) return;
+      try {
+        await refineTextLayer(page, textTask, textContent, viewport, pdfjsLib);
+      } catch (error) {
+        // A geometry mismatch retains the native layer; it must never hide text.
+        console.warn('文字边界优化不可用，保留原生文字层', error);
+      }
       if (id !== loadId) return;
       window.ReadMatePdfText.attachLayer(textTask, textContent, textLayerEl);
       if (!textContent.items.some(item => typeof item.str === 'string' && item.str.trim())) {
